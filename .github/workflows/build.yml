@@ -1,0 +1,55 @@
+name: Build Windows App
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore BHComboTrigger.csproj
+
+      - name: Publish Windows x64 single-file
+        run: dotnet publish BHComboTrigger.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:PublishTrimmed=false -o publish
+
+      - name: Prepare downloads
+        shell: pwsh
+        run: |
+          Copy-Item .\publish\BHComboTrigger.exe .\BHComboTrigger.exe -Force
+          Compress-Archive -Path .\publish\* -DestinationPath .\BHComboTrigger-win-x64.zip -Force
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: BHComboTrigger-win-x64
+          path: |
+            BHComboTrigger.exe
+            BHComboTrigger-win-x64.zip
+          if-no-files-found: error
+
+      - name: Publish latest release download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "latest"
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --title "BH Combo Trigger - Latest" --notes "Windows x64 build. Select a Brawlhalla true combo, configure timing/key bindings, and execute it once with a global trigger key."
+          }
+          gh release upload $tag .\BHComboTrigger.exe .\BHComboTrigger-win-x64.zip --clobber
